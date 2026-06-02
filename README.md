@@ -1,6 +1,6 @@
 # Web Application Security Assessment (OWASP Top 10)
 
-A personal lab project where I set up two deliberately vulnerable web apps and practiced finding/exploiting common web vulnerabilities. Done as part of building my cybersecurity portfolio while finishing my IT degree.
+A personal lab project where I set up two deliberately vulnerable web apps and practiced finding/exploiting common web vulnerabilities.
 
 **Tools used:** Burp Suite, OWASP ZAP, SQLmap, Nikto, Python  
 **Target apps:** DVWA, OWASP Juice Shop (both running locally via Docker)  
