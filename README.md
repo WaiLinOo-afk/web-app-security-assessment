@@ -4,7 +4,6 @@ A personal lab project where I set up two deliberately vulnerable web apps and p
 
 **Tools used:** Burp Suite, OWASP ZAP, SQLmap, Nikto, Python  
 **Target apps:** DVWA, OWASP Juice Shop (both running locally via Docker)  
-**Timeframe:** Jan 2024 – Mar 2024
 
 ---
 
