@@ -1,7 +1,7 @@
 # Web App Security Assessment — DVWA + Juice Shop
 
 **Done by:** WaiLinOo  
-**Date:** June 2024  
+
 **Apps tested:** DVWA (security=low), OWASP Juice Shop  
 **Tools:** Burp Suite, SQLmap, Nikto, custom Python fuzzer
 
