@@ -2,7 +2,7 @@
 
 > **Ethical use notice:** This project is for **authorised testing only** on local lab environments you own and control. The tools, scripts, and techniques documented here must not be used against systems without explicit written permission. Running these against live or third-party systems without authorisation is illegal.
 
-A personal lab project where I set up two deliberately vulnerable web apps and practised finding/exploiting common web vulnerabilities.
+A personal lab project where I set up two deliberately vulnerable web apps and practiced finding/exploiting common web vulnerabilities.
 
 **Tools used:** Burp Suite, OWASP ZAP, SQLmap, Nikto, Python  
 **Target apps:** DVWA, OWASP Juice Shop (both running locally via Docker)  
@@ -12,9 +12,9 @@ A personal lab project where I set up two deliberately vulnerable web apps and p
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) — to run DVWA and Juice Shop
-- Python 3.8+ — for the fuzzer script
-- [Burp Suite Community Edition](https://portswigger.net/burp/communitydownload) — as the main proxy/testing tool
-- Basic familiarity with web proxies and HTTP
+- Python 3.8+
+- [Burp Suite Community Edition](https://portswigger.net/burp/communitydownload)
+- Basic familiarity with HTTP and web proxies
 
 ---
 
@@ -70,7 +70,7 @@ The goal was to get comfortable with the full testing workflow — not just runn
 docker run -d -p 80:80 --name dvwa vulnerables/web-dvwa
 
 # 2. Log into DVWA (admin/password), go to Setup and click Create Database
-#    Then grab your PHPSESSID from browser dev tools
+#    Then grab your PHPSESSID from browser dev tools (Application > Cookies)
 
 # 3. Edit SESSION_COOKIE in fuzzer.py with your session ID
 
@@ -116,9 +116,6 @@ web-app-security-assessment/
     └── nikto_juiceshop.txt
 ```
 
-**Quick links:**  
-[Full assessment report](report/assessment_report.md) · [Testing notes](notes/raw_testing_notes.md) · [Screenshot index](screenshots/README.md) · [Fuzzer script](scripts/fuzzer.py)
-
 ---
 
 ## What I learned
@@ -132,8 +129,8 @@ web-app-security-assessment/
 
 ## TODO / What's next
 
-- [ ] Try XXE injection — ran out of time during the lab but want to come back to it
-- [ ] Test SSRF properly, only skimmed it
-- [ ] Add more payloads to the fuzzer, right now it only covers the basics
-- [ ] Clean up the notes file, its a mess right now
-- [ ] Figure out how to export Burp configs properly
+- wanted to test XXE but ran out of time setting up an out-of-band server
+- look into the JWT implementation in Juice Shop more (heard there's something there)
+- try SSRF — didn't find any endpoints to test it on here
+- add more payloads to the fuzzer
+- clean up the report, still a bit rough
