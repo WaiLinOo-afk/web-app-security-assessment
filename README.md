@@ -40,8 +40,8 @@ The goal was to get comfortable with the full testing workflow — not just runn
 | 8 | IDOR on basket API | Juice Shop | High | A01 Broken Access Control |
 | 9 | Admin panel accessible without auth | Juice Shop | High | A01 Broken Access Control |
 | 10 | Passwords stored as unsalted MD5 | DVWA | High | A02 Crypto Failures |
-| 11 | No rate limiting on login | Juice Shop | Medium | A07 Auth Failures |
-| 12 | Verbose SQL errors in response | DVWA | Medium | A05 Misconfiguration |
+| 11 | No rate limiting on login | Juice Shop | Med | A07 Auth Failures |
+| 12 | Verbose SQL errors in response | DVWA | Medium | A03 Injection |
 | 13 | Default credentials accepted | DVWA | Medium | A05 Misconfiguration |
 | 14 | Missing CSRF tokens | DVWA | Medium | A08 Integrity Failures |
 | 15 | No logging on failed logins | DVWA | Low | A09 Logging Failures |
@@ -70,24 +70,14 @@ The goal was to get comfortable with the full testing workflow — not just runn
 docker run -d -p 80:80 --name dvwa vulnerables/web-dvwa
 
 # 2. Log into DVWA (admin/password), go to Setup and click Create Database
+#    Then grab your PHPSESSID from browser dev tools
 
-# 3. Get your PHPSESSID:
-#    Open browser DevTools → Application → Cookies → localhost → copy PHPSESSID value
+# 3. Edit SESSION_COOKIE in fuzzer.py with your session ID
 
-# 4. Install dependencies
-pip3 install -r scripts/requirements.txt
-
-# 5. Run the fuzzer (two options):
-
-# Option A — pass session on command line
-python3 scripts/fuzzer.py --session YOUR_PHPSESSID_HERE
-
-# Option B — use environment variable (recommended, avoids shell history leak)
-export DVWA_SESSION=YOUR_PHPSESSID_HERE
+# 4. Run it
+pip3 install requests
 python3 scripts/fuzzer.py
 ```
-
-Results are written to `fuzzer_results.txt`.
 
 ---
 
@@ -111,21 +101,19 @@ docker run -d -p 3000:3000 --name juiceshop bkimminich/juice-shop
 ```
 web-app-security-assessment/
 ├── README.md
-├── LICENSE
-├── .gitignore
-├── report/
-│   └── assessment_report.md   ← full pentest report (CVSS, impact, remediation)
 ├── scripts/
-│   ├── fuzzer.py              ← custom Python fuzzer (SQLi, XSS, CMDI, LFI, CSRF)
+│   ├── fuzzer.py          ← custom Python fuzzer
 │   └── requirements.txt
 ├── configs/
 │   └── burp_config_notes.md
-├── screenshots/               ← exploitation evidence (20 annotated PNGs)
+├── screenshots/           ← exploitation evidence
 │   └── README.md
+├── report/
+│   └── assessment_report.md
 └── notes/
-    ├── raw_testing_notes.md   ← step-by-step working notes per vulnerability
-    ├── nikto_dvwa.txt         ← Nikto scan output for DVWA
-    └── nikto_juiceshop.txt    ← Nikto scan output for Juice Shop
+    ├── raw_testing_notes.md
+    ├── nikto_dvwa.txt
+    └── nikto_juiceshop.txt
 ```
 
 **Quick links:**  
@@ -139,4 +127,13 @@ web-app-security-assessment/
 - OWASP Top 10 isn't just a checklist, there's real overlap between categories (e.g. SQLi can cause both injection AND auth bypass)
 - Writing the fuzzer helped me understand what tools like SQLmap are doing under the hood
 - Documenting findings properly is harder than finding them — took me a while to get the format right
-- DOM-based XSS is invisible to server-side scanners and Burp traffic — you have to audit the JavaScript source directly
+
+---
+
+## TODO / What's next
+
+- [ ] Try XXE injection — ran out of time during the lab but want to come back to it
+- [ ] Test SSRF properly, only skimmed it
+- [ ] Add more payloads to the fuzzer, right now it only covers the basics
+- [ ] Clean up the notes file, its a mess right now
+- [ ] Figure out how to export Burp configs properly
