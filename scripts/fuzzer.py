@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple web app fuzzer I wrote to automate testing SQLi and XSS payloads
-against DVWA. Got tired of doing it manually in Burp, so built this.
+Web application fuzzer -- tests DVWA for SQLi, XSS, Command Injection, LFI, and CSRF.
 
 Usage:
     1. Start DVWA: docker run -d -p 80:80 vulnerables/web-dvwa
@@ -13,6 +12,7 @@ Usage:
 
 import requests
 import time
+import re
 from datetime import datetime
 
 TARGET = "http://localhost"
@@ -135,14 +135,74 @@ def test_lfi(url, param, f):
         log("  [OK] No LFI found", f)
     return found
 
+def test_csrf(url, form_fields, f):
+    """
+    Check whether a state-changing form includes a CSRF token.
+
+    Strategy:
+      1. GET the page and parse for a hidden token field
+      2. If no token found, submit the form with no Referer header
+         (simulates a cross-origin request)
+      3. If the server accepts the submission -> CSRF vulnerability confirmed
+
+    This catches the most common case: no token at all. It won't catch
+    tokens that exist but aren't validated -- that requires manual testing.
+    """
+    log(f"\n[CSRF] {url}", f)
+    found = []
+    try:
+        r = requests.get(url, cookies=SESSION_COOKIE, timeout=8)
+
+        token_patterns = [
+            r'name=["\'\']user_token["\'\'] value=["\'\']([a-f0-9]+)["\'\']',
+            r'name=["\'\']csrf_token["\'\'] value=["\'\']([^\"\'']+)["\'\']',
+            r'name=["\'\']_token["\'\'] value=["\'\']([^\"\'']+)["\'\']',
+            r'name=["\'\']token["\'\'] value=["\'\']([^\"\'']+)["\'\']',
+        ]
+        token_found = False
+        for pattern in token_patterns:
+            match = re.search(pattern, r.text, re.IGNORECASE)
+            if match:
+                token_found = True
+                log(f"  [INFO] CSRF token present", f)
+                break
+
+        if not token_found:
+            log("  [WARN] No CSRF token found in form -- testing if submission is accepted without one", f)
+            headers = {"Referer": ""}
+            r2 = requests.get(
+                url,
+                params=form_fields,
+                cookies=SESSION_COOKIE,
+                headers=headers,
+                timeout=8,
+            )
+            if r2.status_code == 200 and "login" not in r2.url.lower():
+                log(f"  [VULN] CSRF likely -- form submitted without token and server returned 200", f)
+                found.append(url)
+            else:
+                log(f"  [OK] Server rejected tokenless submission (status={r2.status_code})", f)
+        else:
+            log("  [OK] CSRF token present", f)
+
+    except Exception as e:
+        log(f"  [ERR] {e}", f)
+
+    return found
+
 def main():
     all_findings = []
     with open(OUTPUT_FILE, "w") as f:
         log(f"Fuzzer started -- {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", f)
+
         all_findings += [("SQLi", p) for p in test_sqli(f"{TARGET}/dvwa/vulnerabilities/sqli/", "id", f)]
         all_findings += [("XSS", p) for p in test_xss(f"{TARGET}/dvwa/vulnerabilities/xss_r/", "name", f)]
         all_findings += [("CMDI", p) for p in test_cmdi(f"{TARGET}/dvwa/vulnerabilities/exec/", "ip", f)]
         all_findings += [("LFI", p) for p in test_lfi(f"{TARGET}/dvwa/vulnerabilities/fi/", "page", f)]
+
+        csrf_fields = {"password_new": "csrf_test", "password_conf": "csrf_test", "Change": "Change"}
+        all_findings += [("CSRF", u) for u in test_csrf(f"{TARGET}/dvwa/vulnerabilities/csrf/", csrf_fields, f)]
+
         log(f"\nDone. {len(all_findings)} finding(s).", f)
         for t, p in all_findings:
             log(f"  [{t}] {p}", f)
