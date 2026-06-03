@@ -1,9 +1,20 @@
 # Web Application Security Assessment (OWASP Top 10)
 
-A personal lab project where I set up two deliberately vulnerable web apps and practiced finding/exploiting common web vulnerabilities.
+> **Ethical use notice:** This project is for **authorised testing only** on local lab environments you own and control. The tools, scripts, and techniques documented here must not be used against systems without explicit written permission. Running these against live or third-party systems without authorisation is illegal.
+
+A personal lab project where I set up two deliberately vulnerable web apps and practised finding/exploiting common web vulnerabilities.
 
 **Tools used:** Burp Suite, OWASP ZAP, SQLmap, Nikto, Python  
 **Target apps:** DVWA, OWASP Juice Shop (both running locally via Docker)  
+
+---
+
+## Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) — to run DVWA and Juice Shop
+- Python 3.8+ — for the fuzzer script
+- [Burp Suite Community Edition](https://portswigger.net/burp/communitydownload) — as the main proxy/testing tool
+- Basic familiarity with web proxies and HTTP
 
 ---
 
@@ -59,14 +70,24 @@ The goal was to get comfortable with the full testing workflow — not just runn
 docker run -d -p 80:80 --name dvwa vulnerables/web-dvwa
 
 # 2. Log into DVWA (admin/password), go to Setup and click Create Database
-#    Then grab your PHPSESSID from browser dev tools
 
-# 3. Edit SESSION_COOKIE in fuzzer.py with your session ID
+# 3. Get your PHPSESSID:
+#    Open browser DevTools → Application → Cookies → localhost → copy PHPSESSID value
 
-# 4. Run it
-pip3 install requests
+# 4. Install dependencies
+pip3 install -r scripts/requirements.txt
+
+# 5. Run the fuzzer (two options):
+
+# Option A — pass session on command line
+python3 scripts/fuzzer.py --session YOUR_PHPSESSID_HERE
+
+# Option B — use environment variable (recommended, avoids shell history leak)
+export DVWA_SESSION=YOUR_PHPSESSID_HERE
 python3 scripts/fuzzer.py
 ```
+
+Results are written to `fuzzer_results.txt`.
 
 ---
 
@@ -85,26 +106,37 @@ docker run -d -p 3000:3000 --name juiceshop bkimminich/juice-shop
 
 ---
 
+## Project structure
+
+```
+web-app-security-assessment/
+├── README.md
+├── LICENSE
+├── .gitignore
+├── report/
+│   └── assessment_report.md   ← full pentest report (CVSS, impact, remediation)
+├── scripts/
+│   ├── fuzzer.py              ← custom Python fuzzer (SQLi, XSS, CMDI, LFI, CSRF)
+│   └── requirements.txt
+├── configs/
+│   └── burp_config_notes.md
+├── screenshots/               ← exploitation evidence (20 annotated PNGs)
+│   └── README.md
+└── notes/
+    ├── raw_testing_notes.md   ← step-by-step working notes per vulnerability
+    ├── nikto_dvwa.txt         ← Nikto scan output for DVWA
+    └── nikto_juiceshop.txt    ← Nikto scan output for Juice Shop
+```
+
+**Quick links:**  
+[Full assessment report](report/assessment_report.md) · [Testing notes](notes/raw_testing_notes.md) · [Screenshot index](screenshots/README.md) · [Fuzzer script](scripts/fuzzer.py)
+
+---
+
 ## What I learned
 
 - Manual testing with Burp Suite is way more valuable than just running automated scanners — you actually understand what's happening
 - OWASP Top 10 isn't just a checklist, there's real overlap between categories (e.g. SQLi can cause both injection AND auth bypass)
 - Writing the fuzzer helped me understand what tools like SQLmap are doing under the hood
 - Documenting findings properly is harder than finding them — took me a while to get the format right
-
----
-
-## Repo structure
-
-```
-web-app-security-assessment/
-├── README.md
-├── scripts/
-│   ├── fuzzer.py          ← custom Python fuzzer
-│   └── requirements.txt
-├── configs/
-│   └── burp_config_notes.md
-├── screenshots/           ← exploitation evidence
-└── notes/
-    └── raw_testing_notes.md
-```
+- DOM-based XSS is invisible to server-side scanners and Burp traffic — you have to audit the JavaScript source directly
