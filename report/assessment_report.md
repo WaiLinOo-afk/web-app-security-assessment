@@ -300,15 +300,17 @@ sent 50 requests in burp intruder with no delay - all came back 401, no lockout,
 
 ---
 
-### 12. Verbose SQL errors (DVWA)
+## Finding 12 — Verbose SQL Errors (DVWA)
 
-**Severity:** Medium  
-**OWASP:** A03
+**Severity:** Medium
 
-put a single quote in the id field and got back the full MySQL error with version info and partial query. helped me figure out exactly how to write my UNION payload.
+Put a single quote in the id field and got back the full MySQL error with version info and partial query. Helped me figure out exactly how to write my UNION payload.
+
+```
+You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '1'' at line 1
+```
 
 ---
-
 ### 13. Default credentials (DVWA + Juice Shop)
 
 **Severity:** Medium
