@@ -5,7 +5,10 @@
 **Apps tested:** DVWA (security=low), OWASP Juice Shop  
 **Tools:** Burp Suite, SQLmap, Nikto, custom Python fuzzer
 
-This is my write-up of the vulnerabilities I found during the lab. Not 100% complete yet — still need to add some screenshots and clean up a few sections.
+This is my write-up of the vulnerabilities I found during the lab. Not 100% complete yet.
+
+## How I did this
+Started with DVWA on low difficulty because I wanted to understand why each vulnerability works, not just find them by running automated scanners. Then moved to Juice Shop which was harder because it's a real-ish app. Used Burp Intruder a lot at first, then got tired of clicking manually so I wrote the fuzzer to automate it. Writing the fuzzer actually helped me understand how SQLmap works under the hood, which was the whole point of the lab for me.
 
 ---
 
