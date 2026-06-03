@@ -356,9 +356,25 @@ total: 16 findings across both apps
 
 ---
 
-## What i'd do next time
+## What I didn't finish
+These are the things I wanted to test but didn't get to, either because I ran out of time or hit a wall:
+XXE (XML External Entity)
 
-- test XXE but didn't have time to set up a proper out-of-band server
-- look at the JWT implementation in juice shop more carefully (heard there's something there)
-- automate the CSRF check properly in the fuzzer
-- look into SSRF - didn't find any endpoints to test it on here
+Spent like 2 hours trying to set up Burp Collaborator to catch out-of-band responses, couldn't get it working
+Didn't find any obvious XML endpoints in either app anyway
+Would test this if I had more time
+
+SSRF (Server-Side Request Forgery)
+
+Looked for endpoints that make external requests but couldn't find any
+Juice Shop has some file upload stuff but it didn't seem exploitable in the way I understood it
+
+JWT in Juice Shop
+
+I know the app uses JWT for auth, and I've heard there's something exploitable about it
+Didn't get far enough into it to document properly though — just wanted to flag it
+
+Blind SQL Injection with Time-based Delays
+
+Commented it out in the fuzzer because the timing was too unreliable
+Would need a better approach to confirm this works
