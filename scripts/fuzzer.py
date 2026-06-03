@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Simple web app fuzzer I wrote to automate some of the manual testing I was doing.
-Tests DVWA for SQLi, XSS, command injection, LFI, and CSRF.
+Web application fuzzer -- tests DVWA for SQLi, XSS, Command Injection, LFI, and CSRF.
 
 Usage:
-    1. Start DVWA in Docker: docker run -d -p 80:80 vulnerables/web-dvwa
-    2. Log in at http://localhost, go to Setup, click Create Database
-    3. Grab your PHPSESSID from browser dev tools and paste it below
-    4. Run: python3 fuzzer.py
+    1. Start DVWA: docker run -d -p 80:80 vulnerables/web-dvwa
+    2. Log in at http://localhost, go to Setup and click Create Database
+    3. Get your PHPSESSID from browser dev tools (Application > Cookies)
+    4. Paste it into SESSION_COOKIE below
+    5. Run: python3 fuzzer.py
 """
 
 import requests
@@ -16,10 +16,12 @@ import re
 from datetime import datetime
 
 TARGET = "http://localhost"
-SESSION_COOKIE = {"PHPSESSID": "YOUR_SESSION_ID_HERE", "security": "low"}  # paste your session here
+SESSION_COOKIE = {"PHPSESSID": "YOUR_SESSION_ID_HERE", "security": "low"}
 OUTPUT_FILE = "fuzzer_results.txt"
 
-# TODO: add more payloads here, currently only covering the basics
+# TODO: add error handling later
+# TODO: maybe make session an arg instead of hardcoded
+
 SQLI_PAYLOADS = [
     "'",
     "' OR '1'='1",
@@ -79,7 +81,7 @@ def test_sqli(url, param, f):
                 found.append(payload)
             time.sleep(0.2)
         except Exception as e:
-            log(f"  [ERR] {e}", f)  # TODO: add error handling later
+            log(f"  [ERR] {e}", f)
     if not found:
         log("  [OK] No SQLi found", f)
     return found
@@ -138,8 +140,12 @@ def test_lfi(url, param, f):
 
 def test_csrf(url, form_fields, f):
     """
-    Check if a form has a CSRF token. If not, try submitting without one.
-    Not 100% sure this is the right way to test it but it seemed to work.
+    Check whether a state-changing form includes a CSRF token.
+
+    Strategy:
+      1. GET the page and parse for a hidden token field
+      2. If no token found, submit the form with no Referer header
+      3. If the server accepts the submission -> CSRF vulnerability confirmed
     """
     log(f"\n[CSRF] {url}", f)
     found = []
@@ -148,16 +154,19 @@ def test_csrf(url, form_fields, f):
         token_patterns = [
             r'name=["\'\']user_token["\'\'] value=["\'\']([a-f0-9]+)["\'\']',
             r'name=["\'\']csrf_token["\'\'] value=["\'\']([^\"\'']+)["\'\']',
+            r'name=["\'\']_token["\'\'] value=["\'\']([^\"\'']+)["\'\']',
+            r'name=["\'\']token["\'\'] value=["\'\']([^\"\'']+)["\'\']',
         ]
         token_found = False
         for pattern in token_patterns:
-            if re.search(pattern, r.text, re.IGNORECASE):
+            match = re.search(pattern, r.text, re.IGNORECASE)
+            if match:
                 token_found = True
                 log(f"  [INFO] CSRF token present", f)
                 break
 
         if not token_found:
-            log("  [WARN] No CSRF token found -- testing if submission accepted without one", f)
+            log("  [WARN] No CSRF token found in form -- testing if submission is accepted without one", f)
             headers = {"Referer": ""}
             r2 = requests.get(url, params=form_fields, cookies=SESSION_COOKIE,
                               headers=headers, timeout=8)
