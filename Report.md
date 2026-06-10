@@ -15,12 +15,13 @@ This report presents the findings of a web application security assessment condu
 
 The assessment was structured around the OWASP Top 10 (2021) framework. A total of 11 vulnerabilities were identified across both applications, including two Critical-severity findings that would result in full database compromise and remote code execution in a real-world environment.
 
-| Severity | Count |
-|---|---|
-| Critical | 2 |
-| High | 4 |
-| Medium | 3 |
-| Low | 2 |
+| Severity | Count | CVSS Range | OWASP Categories |
+|---|---|---|---|
+| Critical | 2 | 9.8 | A03, A02 |
+| High | 4 | 6.1 – 7.5 | A01, A03 |
+| Medium | 3 | 5.3 – 5.4 | A06, A07, A08 |
+| Low | 2 | 3.7 | A05, A09 |
+| **Total** | **11** | | |
 
 Key observations:
 - Both applications lack input sanitisation across all user-controlled parameters, enabling SQL Injection, Command Injection, and Cross-Site Scripting
@@ -358,7 +359,7 @@ The password change form does not include a CSRF token and does not validate the
 
 ### F-09 — Outdated Server Components
 **Severity:** Medium | **CVSS:** 5.3 | **OWASP:** A06 Vulnerable Components | **App:** DVWA
-**Evidence:** pic16 (Nikto scan output)
+
 
 **Description:**
 Nikto identified Apache/2.4.25 running on the server. The current stable version is Apache 2.4.66. Outdated server components may contain known, publicly disclosed vulnerabilities with available exploits. Nikto also identified missing security headers and exposed default files.
@@ -369,6 +370,8 @@ Additional Nikto findings:
 - `.gitignore` publicly accessible — exposes directory structure
 - Apache default file `/icons/README` accessible
 
+**Evidence:** pic16 (Nikto scan — Apache/2.4.25 identified as outdated), pic17 (Juice Shop Nikto scan — JAMon CVE-2013-6235)
+
 **Remediation:**
 - Keep all server components updated to current stable versions
 - Subscribe to CVE feeds for Apache and PHP
@@ -378,10 +381,12 @@ Additional Nikto findings:
 
 ### F-10 — Directory Indexing Enabled
 **Severity:** Low | **CVSS:** 3.7 | **OWASP:** A05 Security Misconfiguration | **App:** DVWA
-**Evidence:** pic19
+
 
 **Description:**
 Directory indexing is enabled on `/config/`, making the directory contents browseable to any visitor. The listing exposes `config.inc.php` and `config.inc.php.dist` — files that contain database credentials, hostname, and application configuration. This path should never be accessible in any environment.
+
+**Evidence:** pic19 (directory listing at http://localhost/config/ showing config.inc.php exposed)
 
 **Steps to Reproduce:**
 1. Navigate to `http://localhost/config/`
