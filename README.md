@@ -45,7 +45,7 @@ The focus was on building a complete testing workflow — not just running scann
 | SQLmap | Latest |
 | Python | 3.8+ |
 | Docker | Required to run both targets |
-| OS | Any (tested on Ubuntu 22.04) |
+| OS | Any (tested on Kali Linux) |
 
 ---
 
@@ -92,27 +92,29 @@ For Burp Suite proxy configuration, see [`configs/burp-setup.md`](configs/burp-s
 | 15 | No logging on failed login attempts | Juice Shop | Low | [A09 Security Logging & Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/) |
 | 16 | Server version disclosed in response headers | DVWA | Low | [A06 Vulnerable & Outdated Components](https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/) |
 
+Full write-up with reproduction steps and remediation for each finding: [`report/Report.md`](report/Report.md).
+
 ---
 
 ## Notable Findings
 
 **SQL Injection → Credential Dump (DVWA)**  
-No input sanitisation on the SQLi endpoint whatsoever. Used `' OR 1=1-- -` to enumerate all users, then chained UNION SELECT to extract the database name and all password hashes. The hashes turned out to be unsalted MD5 — crackable offline in seconds. Confirmed and replicated with SQLmap.
+No input sanitisation on the SQLi endpoint. Used `' OR 1=1-- -` to enumerate all users, then chained UNION SELECT to extract the database name and all password hashes. The hashes were unsalted MD5 — crackable offline in seconds. Confirmed with SQLmap.
 
 **SQLi Login Bypass (Juice Shop)**  
-The login form passed the email field directly into a SQL query. Entering `' OR 1=1-- -` as the email (any password) authenticated as the admin account. This is a clean example of A03 and A07 chaining in a single request — you bypass both the query logic and the authentication gate at once.
+The login form passed the email field directly into a SQL query. Entering `' OR 1=1-- -` as the email authenticated directly as the admin account — a clean example of A03 and A07 chaining in a single request.
 
 **Command Injection / RCE (DVWA)**  
-The ping utility appended user input directly to a shell command with no sanitisation. `127.0.0.1; id` returned `uid=33(www-data)`, confirming unauthenticated remote code execution. Escalated to reading `/etc/passwd` with `; cat /etc/passwd`.
+The ping utility appended user input directly to a shell command with no sanitisation. `127.0.0.1; id` returned `uid=33(www-data)`, confirming unauthenticated RCE. Escalated to reading `/etc/passwd` with `; cat /etc/passwd`.
 
 **Local File Inclusion (DVWA)**  
-The `page=` parameter included files from the local filesystem with no path validation or allowlisting. `?page=../../../../../../etc/passwd` read arbitrary system files in the browser. `allow_url_include` was disabled in `php.ini` so RFI wasn't possible, but LFI alone is enough to read sensitive config files and source code.
+The `page=` parameter included files from the local filesystem with no path validation. `?page=../../../../../../etc/passwd` read arbitrary system files in the browser response.
 
 ---
 
 ## Custom Fuzzer
 
-`scripts/fuzzer.py` automates SQLi, XSS, command injection, and LFI payload delivery across DVWA's four main vulnerable endpoints. It was written to reduce repetitive manual testing and to better understand what tools like SQLmap are doing under the hood.
+`scripts/fuzzer.py` automates SQLi, XSS, command injection, and LFI payload delivery across DVWA's four main vulnerable endpoints. Written to reduce repetitive manual testing and to better understand what tools like SQLmap do under the hood.
 
 ### Prerequisites
 
@@ -127,11 +129,8 @@ pip install -r scripts/requirements.txt
 docker run -d -p 80:80 --name dvwa vulnerables/web-dvwa
 
 # 2. Log in at http://localhost, run Setup, set Security Level to Low
-
 # 3. Copy your PHPSESSID from DevTools → Application → Cookies
-
 # 4. Paste it into SESSION_COOKIE in fuzzer.py
-
 # 5. Run the fuzzer
 python3 scripts/fuzzer.py
 ```
@@ -146,24 +145,23 @@ Results are saved to `fuzzer_results.txt` in the project root.
 web-app-security-assessment/
 ├── README.md
 ├── .gitignore
-├── scripts/
-│   ├── fuzzer.py                       ← custom payload fuzzer (SQLi, XSS, CMDi, LFI)
-│   └── requirements.txt
+├── Screenshots/                    ← evidence (Burp captures, browser screenshots)
 ├── configs/
-│   └── burp-setup.md                   ← Burp Suite proxy setup notes
-├── notes/
-│   └── raw-testing-notes.md            ← working notes from each test session
-├── report/                             ← (WIP) formal findings report
-└── screenshots/                        ← evidence (Burp captures, browser screenshots)
+│   └── burp-setup.md               ← Burp Suite proxy setup notes
+├── report/
+│   └── Report.md                   ← full penetration test report (OWASP Top 10)
+└── scripts/
+    ├── fuzzer.py                   ← custom payload fuzzer (SQLi, XSS, CMDi, LFI)
+    └── requirements.txt
 ```
 
 ---
 
 ## Reflections
 
-- Manual testing with Burp Suite is significantly more valuable than running automated scanners alone — you develop an intuition for what's happening and why, rather than just interpreting output
-- OWASP Top 10 categories aren't isolated: the SQLi login bypass simultaneously triggered A03 and A07, which affects how you calculate combined risk
-- Writing `fuzzer.py` clarified what SQLmap is doing internally, which makes it much easier to tune and interpret correctly when things don't work as expected
-- Documenting findings properly is genuinely harder than finding them — good write-ups require enough detail for a developer to reproduce, understand, and fix the issue, which is a different skill from exploitation
+- Manual testing with Burp Suite is far more valuable than running automated scanners alone — you actually understand what's happening and why
+- OWASP Top 10 categories aren't isolated: SQLi can simultaneously trigger injection *and* authentication failures, which changes the severity calculation
+- Building `fuzzer.py` clarified what tools like SQLmap do internally, which makes them easier to use effectively and interpret correctly
+- Writing up findings properly is genuinely harder than finding them — consistent, clear documentation takes practice
 
 ---
