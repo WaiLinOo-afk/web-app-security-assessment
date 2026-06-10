@@ -56,7 +56,6 @@ Testing followed a structured manual approach aligned to the OWASP Testing Guide
 **Issues encountered during testing:**
 - Burp Suite did not intercept localhost traffic by default — resolved by removing localhost from Firefox "No proxy for" field
 - Hydra failed against Juice Shop's JSON login API — switched to ffuf
-- DVWA path on this Docker image is `/vulnerabilities/` not `/dvwa/vulnerabilities/`
 - PHPSESSID expired frequently — session cookie refreshed between test phases
 
 ### 2.3 Tools Used
@@ -250,7 +249,7 @@ The `page` parameter accepts a file path without validation, allowing path trave
 2. Modify the URL parameter to: `?page=../../../../../../etc/passwd`
 3. Full `/etc/passwd` contents rendered at the top of the page — visible in both the URL bar and page response
 
-**Evidence:** f05.png (URL bar shows payload, /etc/passwd contents visible at top of page)
+**Evidence:** 20_dvwa_fi.png (URL bar shows payload, /etc/passwd contents visible at top of page)
 
 **Impact:** Sensitive file disclosure. An attacker can read application configuration files, database credentials, SSH private keys, and source code. On PHP servers, LFI can be chained with log poisoning to achieve Remote Code Execution.
 
